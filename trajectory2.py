@@ -46,6 +46,8 @@ class TO:
         self.q = cp.Variable((N, 2))
         self.E = cp.Variable()
         self.y = cp.Variable(N - 1)
+        self.z = cp.Variable((N, J))
+        self.Tau = cp.Variable((N, J))
         self.R_ = 0
         self.clu_R_ = list()
         self.constraints = list()
@@ -54,6 +56,8 @@ class TO:
         self.cal_A_()
         self.cal_R_()
         self.cal_y_()
+        self.cal_z_()
+        self.cal_nj_R_()
         self.gen_constraints()
 
     def cal_d_(self):
@@ -95,7 +99,7 @@ class TO:
         for n in range(N):
             for j in range(J):
                 for i in range(I):
-                    self.horizon_d2_[n, j, i] = np.sum((self.w[j][i] - self.q_[n]) ** 2)
+                    self.horizon_d2_ = np.sum((self.w[j][i] - self.q_[n]) ** 2)
 
         self.d2_ = self.horizon_d2_ + H**2
 
@@ -114,6 +118,10 @@ class TO:
         ) - self.Delta2_ / (2 * v_0**2)
         self.y_ = np.sqrt(self.y2_)
 
+    def cal_z_(self):
+        self.z2_ = self.A_ * self.tau
+        self.z_ = np.sqrt(self.z2_)
+
     def cal_A_(self):
         tmp = np.log2(1 + self.gama / self.d2_)
         part_a = np.sum(tmp, axis=2)
@@ -129,6 +137,24 @@ class TO:
                 np.expand_dims(self.w[j][i], 0) - self.q[index],
             )
         )
+
+    def cal_nj_R_(self):
+        self.nj_R_ = np.zeros((N, J))
+        self.nj_R_ = list(self.nj_R_)
+        print(self.B_.shape)
+        print(self.horizon_d2_)
+        for n in range(N):
+            for j in range(J):
+                self.nj_R_[n][j] = np.sum(self.B_[n][j] * self.horizon_d2_[n][j])
+                self.nj_R_[n][j] -= cp.sum_squares(
+                    cp.multiply(
+                        np.expand_dims(self.sqrt_B_[n, j, ...], 1),
+                        self.w[j] - np.expand_dims(self.q[n], 0),
+                    )
+                )
+                self.nj_R_[n][j] += self.A_[n][j]
+
+        return self.nj_R_
 
     def cal_R_(self):
         self.sqrt_B_ = np.sqrt(self.B_)
@@ -163,50 +189,57 @@ class TO:
             self.q >= 0,
             self.q <= 2000,
         ]
-        # energy = cp.sum(
-        #     P_0 * (self.t + 3 / (U_tip**2) * cp.multiply(self.Delta2, frac_t))
-        #     #   + P_i * self.y
-        #     + 0.5 * d_0 * rho * s * A * cp.multiply(self.Delta3, frac_t2)
-        # )
+        energy = cp.sum(
+            P_0 * (self.t + 3 / (U_tip**2) * cp.multiply(self.Delta2, frac_t))
+            + P_i * self.y
+            + 0.5 * d_0 * rho * s * A * cp.multiply(self.Delta3, frac_t2)
+        )
 
-        # energy_con = [
-        #     self.E >= 0,
-        #     # energy <= 800000,
-        #     # energy <= self.E,
-        # ]
+        energy_con = [
+            self.E >= 0,
+            energy <= 80000,
+            energy <= self.E,
+        ]
 
-        # y_con = list()
+        y_con = list()
 
-        # y_con = [
-        #     self.y2_[n]
-        #     + 2 * self.y_[n]
-        #     + self.Delta2_[n] / (v_0**2)
-        #     + 2
-        #     / (v_0**2)
-        #     * cp.sum(cp.multiply(self.Delta_[n], self.Delta[n] - self.Delta_[n]))
-        #     >= cp.square(cp.quad_over_lin(self.t[n], self.y[n]))
-        #     for n in range(N - 1)
-        # ]
-        # y_con.append(self.y >= 0)
+        y_con = [
+            self.y2_[n]
+            + 2 * self.y_[n]
+            + self.Delta2_[n] / (v_0**2)
+            + 2
+            / (v_0**2)
+            * cp.sum(cp.multiply(self.Delta_[n], self.Delta[n] - self.Delta_[n]))
+            >= cp.square(cp.quad_over_lin(self.t[n], self.y[n]))
+            for n in range(N - 1)
+        ]
+        y_con.append(self.y >= 0)
+
+        z_con = list()
+        # for n in range(N):
+        #     for j in range(J):
+        #         z_con.append(self.clu_R_[])
 
         close_cons = [cp.sum(cp.square(self.q - self.q_), 1) <= 100**2]
 
-        rate_min = [self.clu_R_[j] >= 350 for j in range(J)]
+        rate_min = [self.clu_R_[j] >= 420 for j in range(J)]
 
         self.constraints.extend(start_and_end)
         self.constraints.extend(speed_max)
         self.constraints.extend(d_max)
         self.constraints.extend(border)
-        # self.constraints.extend(energy_con)
-        # self.constraints.extend(y_con)
+        self.constraints.extend(energy_con)
+        self.constraints.extend(y_con)
         # self.constraints.extend(close_cons)
-        # self.constraints.extend(rate_min)
+        self.constraints.extend(rate_min)
 
     def opt(self):
-        objective = cp.Maximize(Enlarge**2 * self.R_)
-        # objective = cp.Maximize(Enlarge**2 * (self.R_ - self.ksi * self.chi * self.E))
-        # clu = 10
-        # objective = cp.Maximize(Enlarge**2 * self.clu_R_[clu - 1])
+        objective = cp.Maximize(Enlarge**2 * (self.R_ - self.ksi * self.chi * self.E))
+        # clu = 2
+        # objective = cp.Maximize(self.clu_R_[clu - 1])
+        # objective = cp.Maximize(
+        #     Enlarge**2 * (self.clu_R_[clu - 1] - self.ksi * self.chi * self.E)
+        # )
 
         prob = cp.Problem(objective, self.constraints)
         result = prob.solve(solver="ECOS", verbose=False)
