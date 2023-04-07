@@ -231,7 +231,8 @@ if __name__ == "__main__":
 
     q_ = np.column_stack((qx, qy))
 
-    omega = np.random.rand(N, J)
+    # omega = np.random.rand(N, J)
+    omega = np.full((N, J), 1)
     p = np.random.rand(N, J, I)
 
     tso = TO(w, omega, p, q_, t, tau)

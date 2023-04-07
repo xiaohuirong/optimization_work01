@@ -32,23 +32,25 @@ Enlarge = 100
 
 
 class SO:
-    def __init__(self, w, omega, p, q_) -> None:
+    def __init__(self, w, omega, p, q_, t_) -> None:
         super().__init__()
         self.w = w
         self.omega = omega
         self.p = p
         self.ksi = 1
-        self.chi = 0.01
+        self.chi = 1
         self.q_ = q_
+        self.t_ = t_
 
         self.E = cp.Variable()
         self.y = cp.Variable(N - 1)
-        self.tau = cp.Variable((N, j))
+        self.tau = cp.Variable((N - 1, J))
         self.t = cp.Variable(N - 1)
         self.constraints = list()
 
         self.cal_A_()
         self.cal_y_()
+        self.cal_R_()
         self.gen_constraints()
 
     def cal_d_(self):
@@ -95,7 +97,7 @@ class SO:
         self.Delta2_ = np.sum(np.square(self.Delta_), 1)
         self.Delta3_ = np.power(np.linalg.norm(self.Delta_, axis=1), 3)
         self.y2_ = np.sqrt(
-            self.t**4 + self.Delta2_**2 / (4 * v_0**4)
+            self.t_**4 + self.Delta2_**2 / (4 * v_0**4)
         ) - self.Delta2_ / (2 * v_0**2)
         self.y_ = np.sqrt(self.y2_)
 
@@ -106,14 +108,13 @@ class SO:
         part_a = np.sum(tmp, axis=2)
         part_b = K * np.log2(self.omega) - K * np.log2(np.e) * (1 - 1 / self.omega)
         self.A_ = part_a + part_b
+        self.A_ = self.A_[0 : N - 1]
 
     def cal_R_(self):
-        self.R_ = cp.sum(self.tau * self.A_)
-        self.clu_R_ = cp.sum(self.tau * self.A_, 0)
+        self.R_ = cp.sum(cp.multiply(self.tau, self.A_))
+        self.clu_R_ = cp.sum(cp.multiply(self.tau, self.A_), 0)
 
     def gen_constraints(self):
-        frac_t = 1 / self.t
-        frac_t2 = 1 / (self.t**2)
         speed_max = [
             self.Delta2_ <= self.t * Vmax**2,
         ]
@@ -132,7 +133,7 @@ class SO:
             * A
             * self.Delta3_[n]
             * cp.square(cp.quad_over_lin(1, self.t[n]))
-            for n in range(N)
+            for n in range(N - 1)
         ]
 
         energy_sum = cp.sum(energy)
@@ -145,21 +146,25 @@ class SO:
             for n in range(N - 1)
         ]
         y_con.append(self.y >= 0)
+        tau_min = [self.tau >= 0]
 
-        close_cons = [cp.sum(cp.square(self.q - self.q_), 1) <= 100**2]
+        tau_max = [cp.sum(self.tau, 1) <= self.t]
 
-        rate_min = [self.clu_R_[j] >= 350 for j in range(J)]
+        rate_min = [self.clu_R_[j] >= 1000 for j in range(J)]
 
         self.constraints.extend(speed_max)
+        self.constraints.extend(tau_min)
+        self.constraints.extend(tau_max)
         self.constraints.extend(y_con)
-        # self.constraints.extend(rate_min)
+        self.constraints.extend(energy_con)
+        self.constraints.extend(rate_min)
 
     def opt(self):
-        objective = cp.Maximize(Enlarge**2 * (self.R_ - self.ksi * self.chi * self.E))
+        objective = cp.Maximize(self.R_ - self.ksi * self.chi * self.E)
 
         prob = cp.Problem(objective, self.constraints)
         result = prob.solve(solver="ECOS", verbose=False)
-        return result, self.q.value
+        return result, self.t.value, self.tau.value
 
 
 if __name__ == "__main__":
@@ -175,6 +180,7 @@ if __name__ == "__main__":
     t = t[..., 0]
     tau = init_data["tau"]
     tau = np.vstack([tau, np.zeros(J)])
+    print(np.argmax(tau, 1) + 1)
 
     w = np.zeros((J, I, 2))
     for j in range(J):
@@ -183,20 +189,13 @@ if __name__ == "__main__":
 
     q_ = np.column_stack((qx, qy))
 
-    omega = np.random.rand(N, J)
+    omega = np.random.rand(N, J) + 1
+    # omega = np.full((N, J), 0.5)
     p = np.random.rand(N, J, I)
 
-    tso = TO(w, omega, p, q_, t, tau)
-    [result, q_new] = tso.opt()
+    tso = SO(w, omega, p, q_, t)
+    [result, t_new, tau_new] = tso.opt()
+    print(t_new)
+    print(t_new - t)
 
-    print(result)
-    for j in range(J):
-        print(j + 1, "= ", tso.clu_R_[j].value)
-    print(tso.E.value)
-    print(np.sum(tso.A_ * tau))
-
-    fig, ax = plt.subplots()
-    ax.scatter(q_[..., 0], q_[..., 1])
-    ax.scatter(q_new[..., 0], q_new[..., 1])
-
-    plt.show()
+    print(np.argmax(tau_new, 1) + 1)
