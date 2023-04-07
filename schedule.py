@@ -31,28 +31,23 @@ A = 0.503
 Enlarge = 100
 
 
-class TO:
-    def __init__(self, w, omega, p, q_, t, tau) -> None:
+class SO:
+    def __init__(self, w, omega, p, q_) -> None:
         super().__init__()
         self.w = w
         self.omega = omega
         self.p = p
-        self.q_ = q_
-        self.t = t
-        self.tau = tau
         self.ksi = 1
         self.chi = 0.01
+        self.q_ = q_
 
-        self.q = cp.Variable((N, 2))
         self.E = cp.Variable()
         self.y = cp.Variable(N - 1)
-        self.R_ = 0
-        self.clu_R_ = list()
+        self.tau = cp.Variable((N, j))
+        self.t = cp.Variable(N - 1)
         self.constraints = list()
 
-        self.cal_B_()
         self.cal_A_()
-        self.cal_R_()
         self.cal_y_()
         self.gen_constraints()
 
@@ -65,6 +60,16 @@ class TO:
                         np.append(self.q_[n], H) - np.append(self.w[j][i], 0)
                     )
 
+    def cal_d2_(self):
+        self.d2_ = np.zeros((N, J, I))
+        self.horizon_d2_ = np.zeros((N, J, I))
+        for n in range(N):
+            for j in range(J):
+                for i in range(I):
+                    self.horizon_d2_[n, j, i] = np.sum((self.w[j][i] - self.q_[n]) ** 2)
+
+        self.d2_ = self.horizon_d2_ + H**2
+
     def cal_delta(self):
         self.cal_d_()
         self.theta = 180 / np.pi * np.arcsin(H / self.d)
@@ -73,10 +78,6 @@ class TO:
             + (etaLoS - etaNlos) / (1 + a * np.exp(-b * (self.theta - a)))
             + etaNlos
         )
-
-    def cal_ell(self):
-        self.cal_delta()
-        self.ell = (1 / self.d**2) * (10 ** (self.delta / 10))
 
     def cal_gama(self):
         self.cal_delta()
@@ -89,101 +90,57 @@ class TO:
             * (1 / (10 ** (self.delta / 10)))
         )
 
-    def cal_d2_(self):
-        self.d2_ = np.zeros((N, J, I))
-        self.horizon_d2_ = np.zeros((N, J, I))
-        for n in range(N):
-            for j in range(J):
-                for i in range(I):
-                    self.horizon_d2_[n, j, i] = np.sum((self.w[j][i] - self.q_[n]) ** 2)
-
-        self.d2_ = self.horizon_d2_ + H**2
-
-    def cal_B_(self):
-        self.cal_gama()
-        self.cal_d2_()
-        up = self.gama * np.log2(np.e)
-        down = (self.gama + self.d2_) * (self.gama)
-        self.B_ = up / down
-
     def cal_y_(self):
         self.Delta_ = self.q_[1:N] - self.q_[0 : N - 1]
         self.Delta2_ = np.sum(np.square(self.Delta_), 1)
+        self.Delta3_ = np.power(np.linalg.norm(self.Delta_, axis=1), 3)
         self.y2_ = np.sqrt(
             self.t**4 + self.Delta2_**2 / (4 * v_0**4)
         ) - self.Delta2_ / (2 * v_0**2)
         self.y_ = np.sqrt(self.y2_)
 
     def cal_A_(self):
+        self.cal_gama()
+        self.cal_d2_()
         tmp = np.log2(1 + self.gama / self.d2_)
         part_a = np.sum(tmp, axis=2)
         part_b = K * np.log2(self.omega) - K * np.log2(np.e) * (1 - 1 / self.omega)
         self.A_ = part_a + part_b
 
-    def cal_node_R_(self, j, i):
-        index = np.where(self.sqrt_tau[..., j] > 0.001)[0]
-        factor = self.sqrt_B_[index, j, i] * self.sqrt_tau[index, j]
-        return cp.sum_squares(
-            cp.multiply(
-                np.expand_dims(factor, 1),
-                np.expand_dims(self.w[j][i], 0) - self.q[index],
-            )
-        )
-
     def cal_R_(self):
-        self.sqrt_B_ = np.sqrt(self.B_)
-        self.clu_R_ = np.sum(self.B_ * self.horizon_d2_, (0, 2))
-        self.clu_R_ = list(self.clu_R_)
-        self.sqrt_tau = np.sqrt(self.tau)
-
-        for j in range(J):
-            for i in range(I):
-                R_ = self.cal_node_R_(j, i)
-                self.clu_R_[j] -= R_
-            self.R_ += self.clu_R_[j]
-        self.R_ += np.sum(self.A_ * self.tau)
+        self.R_ = cp.sum(self.tau * self.A_)
+        self.clu_R_ = cp.sum(self.tau * self.A_, 0)
 
     def gen_constraints(self):
         frac_t = 1 / self.t
         frac_t2 = 1 / (self.t**2)
-        self.Delta = self.q[1:N] - self.q[0 : N - 1]
-        self.Delta2 = cp.sum(cp.square(self.Delta), 1)
-        self.Delta3 = cp.sum(cp.power(cp.abs(self.Delta), 3), 1)
-        start_and_end = [
-            self.q[0] == self.q_[0],
-            self.q[N - 1] == self.q_[N - 1],
-        ]
-        d_max = [
-            self.Delta2 <= Dmax**2,
-        ]
         speed_max = [
-            self.Delta2 <= self.t * Vmax**2,
+            self.Delta2_ <= self.t * Vmax**2,
         ]
-        border = [
-            self.q >= 0,
-            self.q <= 2000,
-        ]
-        energy = cp.sum(
-            P_0 * (self.t + 3 / (U_tip**2) * cp.multiply(self.Delta2, frac_t))
-            + P_i * self.y
-            + 0.5 * d_0 * rho * s * A * cp.multiply(self.Delta3, frac_t2)
-        )
 
-        energy_con = [
-            self.E >= 0,
-            energy <= 80000,
-            energy <= self.E,
+        energy = [
+            P_0
+            * (
+                self.t[n]
+                + 3 / (U_tip**2) * self.Delta2_[n] * cp.quad_over_lin(1, self.t[n])
+            )
+            + P_i * self.y[n]
+            + 0.5
+            * d_0
+            * rho
+            * s
+            * A
+            * self.Delta3_[n]
+            * cp.square(cp.quad_over_lin(1, self.t[n]))
+            for n in range(N)
         ]
+
+        energy_sum = cp.sum(energy)
+        energy_con = [energy_sum <= self.E]
 
         y_con = list()
-
         y_con = [
-            self.y2_[n]
-            + 2 * self.y_[n]
-            + self.Delta2_[n] / (v_0**2)
-            + 2
-            / (v_0**2)
-            * cp.sum(cp.multiply(self.Delta_[n], self.Delta[n] - self.Delta_[n]))
+            self.y2_[n] + 2 * self.y_[n] + self.Delta2_[n] / (v_0**2)
             >= cp.square(cp.quad_over_lin(self.t[n], self.y[n]))
             for n in range(N - 1)
         ]
@@ -193,13 +150,8 @@ class TO:
 
         rate_min = [self.clu_R_[j] >= 350 for j in range(J)]
 
-        self.constraints.extend(start_and_end)
         self.constraints.extend(speed_max)
-        self.constraints.extend(d_max)
-        self.constraints.extend(border)
-        self.constraints.extend(energy_con)
         self.constraints.extend(y_con)
-        # self.constraints.extend(close_cons)
         # self.constraints.extend(rate_min)
 
     def opt(self):

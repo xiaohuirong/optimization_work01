@@ -148,7 +148,7 @@ class TO:
         frac_t2 = 1 / (self.t**2)
         self.Delta = self.q[1:N] - self.q[0 : N - 1]
         self.Delta2 = cp.sum(cp.square(self.Delta), 1)
-        self.Delta3 = cp.sum(cp.power(cp.abs(self.Delta), 3), 1)
+        self.Delta3 = cp.power(cp.norm(self.Delta, axis=1), 3)
         start_and_end = [
             self.q[0] == self.q_[0],
             self.q[N - 1] == self.q_[N - 1],
