@@ -1,6 +1,6 @@
 ## 论文Energy-Efficient Data Collection for UAV-Assisted IoT: Joint Trajectory and Resource Optimization 复现代码
 
-**目前只实现了轨迹轨迹优化部分**
+**目前只实现了轨迹优化部分**
 
 - 系统环境：Archlinux, python3.10
 
@@ -33,4 +33,6 @@
      ```
 
      
+
+![轨迹优化](https://raw.github.com/xiaohuirong/images/main/tra_opt.png)
 
