@@ -29,6 +29,9 @@ s = 0.05
 A = 0.503
 
 p_0 = 0.02
+pMsk = 0.6
+pMax = 2
+Dmin = 500
 
 
 class PO:
@@ -40,11 +43,10 @@ class PO:
         self.q = q
         self.tau = tau
 
-        self.p = cp.Variable((N, I))
+        self.p = cp.Variable((N, I), nonneg=True)
         self.A = cp.Parameter((N, I), nonneg=True)
         self.tauj = cp.Parameter(N, nonneg=True)
 
-        self.cal_parameter(0)
         self.cal_target()
 
         self.constraints = list()
@@ -84,27 +86,38 @@ class PO:
         self.tauj.value = self.tau[:, j]
 
     def cal_target(self):
-        target_n = cp.sum(cp.log(1 + cp.multiply(self.A, self.p)), 1)
-        target_left = self.tauj @ target_n
+        R_n = cp.sum(cp.log(1 + cp.multiply(self.A, self.p)), 1)
+        self.R = self.tauj @ R_n
 
-        target_n = cp.sum(self.p + 1, 1)
-        target_right = self.tauj @ target_n
-        self.target = np.log2(np.e) * target_left - self.ksi * target_right
+        E_n = cp.sum(self.p + p_0, 1)
+        self.E = self.tauj @ E_n
+        self.target = np.log2(np.e) * self.R - self.ksi * self.E
 
     def gen_constraints(self):
-        not_negtive = [self.p >= 0]
-        sum_max = [cp.sum(self.p) <= 120]
-        self.constraints.extend(not_negtive)
-        self.constraints.extend(sum_max)
+        max_energy = [
+            self.p <= pMsk,
+            cp.sum(self.p, 1) <= pMax,
+        ]
+        min_rate = [
+            self.R >= Dmin,
+        ]
+        self.constraints.extend(max_energy)
+        self.constraints.extend(min_rate)
 
     def opt(self):
         objective = cp.Maximize(self.target)
 
         prob = cp.Problem(objective, self.constraints)
 
-        result = prob.solve(solver="ECOS", verbose=False)
+        results = []
+        p_new = np.zeros((N, J, I))
+        for j in range(J):
+            self.cal_parameter(j)
+            result = prob.solve(solver="MOSEK", verbose=False)
+            results.append(result)
+            p_new[:, j, :] = self.p.value
 
-        return result, self.p.value
+        return results, p_new
 
 
 if __name__ == "__main__":
@@ -128,8 +141,8 @@ if __name__ == "__main__":
 
     q_ = np.column_stack((qx, qy))
 
-    omega = np.random.rand(N, J) + 1
-    # omega = np.full((N, J), 0.5)
+    # omega = np.random.rand(N, J) + 1
+    omega = np.full((N, J), 1.5)
     p = np.random.rand(N, J, I)
 
     tso = PO(w, omega, q_, tau)
