@@ -28,5 +28,7 @@ def loaddata():
     q_ = np.column_stack((qx, qy))
 
     omega = np.full((N, J), 1.0)
-    p = np.random.rand(N, J, I)
+    # p = np.random.rand(N, J, I) * np.expand_dims(tau, 2)
+    p = np.full((N, J, I), 0.4) * np.expand_dims(tau, 2)
+    # p = np.full((N, J, I), 0.04)
     return data_clu, w, q_, omega, p, t, tau

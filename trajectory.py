@@ -28,7 +28,7 @@ rho = 1.225
 s = 0.05
 A = 0.503
 
-Enlarge = 100
+Enlarge = 10
 
 
 class TO:
@@ -41,7 +41,7 @@ class TO:
         self.t = t
         self.tau = tau
         self.ksi = 1
-        self.chi = 0.01
+        self.chi = 0.5
 
         self.q = cp.Variable((N, 2), nonneg=True)
         self.E = cp.Variable()
@@ -57,17 +57,17 @@ class TO:
         self.gen_constraints()
 
     def cal_d_(self):
-        self.d = np.zeros((N, J, I))
+        self.d_ = np.zeros((N, J, I))
         for n in range(N):
             for j in range(J):
                 for i in range(I):
-                    self.d[n, j, i] = np.linalg.norm(
+                    self.d_[n, j, i] = np.linalg.norm(
                         np.append(self.q_[n], H) - np.append(self.w[j][i], 0)
                     )
 
     def cal_delta(self):
         self.cal_d_()
-        self.theta = 180 / np.pi * np.arcsin(H / self.d)
+        self.theta = 180 / np.pi * np.arcsin(H / self.d_)
         self.delta = (
             20 * np.log10(4 * np.pi * f / c)
             + (etaLoS - etaNlos) / (1 + a * np.exp(-b * (self.theta - a)))
@@ -76,7 +76,7 @@ class TO:
 
     def cal_ell(self):
         self.cal_delta()
-        self.ell = (1 / self.d**2) * (10 ** (self.delta / 10))
+        self.ell = (1 / self.d_**2) * (10 ** (self.delta / 10))
 
     def cal_gama(self):
         self.cal_delta()
@@ -103,7 +103,7 @@ class TO:
         self.cal_gama()
         self.cal_d2_()
         up = self.gama * np.log2(np.e)
-        down = (self.gama + self.d2_) * (self.gama)
+        down = (self.gama + self.d2_) * (self.d2_)
         self.B_ = up / down
 
     def cal_y_(self):

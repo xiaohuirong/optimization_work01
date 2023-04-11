@@ -143,7 +143,8 @@ if __name__ == "__main__":
 
     # omega = np.random.rand(N, J) + 1
     omega = np.full((N, J), 1.0)
-    p = np.random.rand(N, J, I)
+    # p = np.random.rand(N, J, I)
+    p = np.full((N, J, I), 0.4) * np.expand_dims(tau, 2)
 
     tso = PO(w, omega, q_, tau)
     [result, p_new] = tso.opt()

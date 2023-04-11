@@ -15,22 +15,40 @@ I = 5
 figure = Myfigure(clu, w)
 figure.add(q)
 
-to = TO(w, omega, p, q, t, tau)
-[result, q] = to.opt()
-figure.add(q)
+error_num = 0
 
-so = SO(w, omega, p, q, t)
-[result, t, tau] = so.opt()
-print(t)
-print(tau)
-np.savetxt("tau.csv", tau, delimiter=",")
+for k in range(3):
+    to = TO(w, omega, p, q, t, tau)
+    [result, q] = to.opt()
+    figure.add(q)
 
-po = PO(w, omega, q, tau)
-[result, p] = po.opt()
+    # to = TO(w, omega, p, q, t, tau)
+    # [result, q] = to.opt()
+    # figure.add(q)
+    # np.savetxt("B.csv", to.B_[0], delimiter=",")
+    # np.savetxt("d.csv", to.d_[0], delimiter=",")
+    # np.savetxt("A.csv", to.A_, delimiter=",")
 
-to = TO(w, omega, p, q, t, tau)
-[result, q] = to.opt()
-figure.add(q)
+    # for k in range(10):
+    #     to = TO(w, omega, p, q, t, tau)
+    #     [result, q] = to.opt()
+    #     figure.add(q)
 
+    so = SO(w, omega, p, q, t)
+    [result, t, tau] = so.opt()
+    # np.savetxt("tau.csv", tau, delimiter=",")
 
+    try:
+        po = PO(w, omega, q, tau)
+        [result, p] = po.opt()
+        np.savetxt("p.csv", p[0], delimiter=",")
+    except:
+        print("Power optimization error.")
+        error_num += 1
+
+    # to = TO(w, omega, p, q, t, tau)
+    # [result, q] = to.opt()
+    # figure.add(q)
+
+print("error_num", error_num)
 figure.show()

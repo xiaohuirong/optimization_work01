@@ -28,7 +28,7 @@ rho = 1.225
 s = 0.05
 A = 0.503
 
-Enlarge = 100
+Enlarge = 1
 
 
 class SO:
