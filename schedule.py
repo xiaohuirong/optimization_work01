@@ -43,9 +43,9 @@ class SO:
         self.t_ = t_
 
         self.E = cp.Variable()
-        self.y = cp.Variable(N - 1)
-        self.tau = cp.Variable((N - 1, J))
-        self.t = cp.Variable(N - 1)
+        self.y = cp.Variable(N - 1, nonneg=True)
+        self.tau = cp.Variable((N - 1, J), nonneg=True)
+        self.t = cp.Variable(N - 1, nonneg=True)
         self.constraints = list()
 
         self.cal_A_()
@@ -145,15 +145,12 @@ class SO:
             >= cp.square(cp.quad_over_lin(self.t[n], self.y[n]))
             for n in range(N - 1)
         ]
-        y_con.append(self.y >= 0)
-        tau_min = [self.tau >= 0]
 
         tau_max = [cp.sum(self.tau, 1) <= self.t]
 
         rate_min = [self.clu_R_[j] >= 1000 for j in range(J)]
 
         self.constraints.extend(speed_max)
-        self.constraints.extend(tau_min)
         self.constraints.extend(tau_max)
         self.constraints.extend(y_con)
         self.constraints.extend(energy_con)
@@ -164,7 +161,10 @@ class SO:
 
         prob = cp.Problem(objective, self.constraints)
         result = prob.solve(solver="ECOS", verbose=False)
-        return result, self.t.value, self.tau.value
+        tau = np.vstack([self.tau.value, np.zeros(J)])
+        eps = 1e-4
+        tau[np.abs(tau) < eps] = 0
+        return result, self.t.value, tau
 
 
 if __name__ == "__main__":
@@ -196,6 +196,5 @@ if __name__ == "__main__":
     tso = SO(w, omega, p, q_, t)
     [result, t_new, tau_new] = tso.opt()
     print(t_new)
-    print(t_new - t)
 
     print(np.argmax(tau_new, 1) + 1)

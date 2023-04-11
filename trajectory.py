@@ -43,9 +43,9 @@ class TO:
         self.ksi = 1
         self.chi = 0.01
 
-        self.q = cp.Variable((N, 2))
+        self.q = cp.Variable((N, 2), nonneg=True)
         self.E = cp.Variable()
-        self.y = cp.Variable(N - 1)
+        self.y = cp.Variable(N - 1, nonneg=True)
         self.R_ = 0
         self.clu_R_ = list()
         self.constraints = list()
@@ -160,7 +160,6 @@ class TO:
             self.Delta2 <= self.t * Vmax**2,
         ]
         border = [
-            self.q >= 0,
             self.q <= 2000,
         ]
         energy = cp.sum(
@@ -187,7 +186,6 @@ class TO:
             >= cp.square(cp.quad_over_lin(self.t[n], self.y[n]))
             for n in range(N - 1)
         ]
-        y_con.append(self.y >= 0)
 
         close_cons = [cp.sum(cp.square(self.q - self.q_), 1) <= 100**2]
 
